@@ -1,0 +1,469 @@
+local Rayfield = nil -- تم إزالة loadstring الخارجي
+
+local StartTime = tick()
+
+local Window = Rayfield:CreateWindow({
+   Name = "صمله ايتاشي ~ يوتا",
+   LoadingTitle = "جاري تحميل السكربت الشامل...",
+   LoadingSubtitle = "بواسطة ايتاشي ~ يوتا",
+   ConfigurationSaving = { Enabled = false },
+   KeySystem = false
+})
+
+-- الخدمات العامة
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+
+-- ==========================================
+-- الأقسام
+-- ==========================================
+local AFKTab = Window:CreateTab("نظام AFK الشامل", 4483362458)
+local ProtectionTab = Window:CreateTab("حماية Anti-Kick", 4483362458)
+local ToolsTab = Window:CreateTab("أدوات السيرفر", 4483362458)
+local SpyTab = Window:CreateTab("تجسس", 4483362458)
+local BangTab = Window:CreateTab("بانق", 4483362458)
+local AntiTab = Window:CreateTab("مضادات", 4483362458)
+
+-- ==========================================
+-- 1. قسم AFK والوقت
+-- ==========================================
+local TimerParagraph = AFKTab:CreateParagraph({
+    Title = "⏱️ وقت التواجد في اللعبة",
+    Content = "00:00:00"
+})
+
+local AntiAfkEnabled = false
+local AutoClickerEnabled = false
+local AntiKickEnabled = true
+local VirtualUser = game:GetService("VirtualUser")
+
+Players.LocalPlayer.Idled:Connect(function()
+    if AntiAfkEnabled then
+        VirtualUser:CaptureController()
+        VirtualUser:ClickButton2(Vector2.new(0, 0))
+    end
+end)
+
+AFKTab:CreateToggle({
+   Name = "تفعيل Anti-AFK القوي",
+   CurrentValue = false,
+   Flag = "AntiAfkToggle",
+   Callback = function(Value)
+       AntiAfkEnabled = Value
+   end,
+})
+
+AFKTab:CreateToggle({
+   Name = "تفعيل Auto-Clicker خفي (كل 5 ثواني)",
+   CurrentValue = false,
+   Callback = function(Value)
+       AutoClickerEnabled = Value
+   end,
+})
+
+task.spawn(function()
+    while task.wait(5) do
+        if AutoClickerEnabled then
+            pcall(function()
+                VirtualUser:Button1Down(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
+                task.wait(0.1)
+                VirtualUser:Button1Up(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
+            end)
+        end
+    end
+end)
+
+AFKTab:CreateToggle({
+   Name = "كتم أصوات اللعبة (Mute Audio)",
+   CurrentValue = false,
+   Callback = function(Value)
+       UserSettings():GetService("UserGameSettings").MasterVolume = Value and 0 or 1
+   end,
+})
+
+local BlackScreenGui = nil
+local BlackScreenText = nil
+
+AFKTab:CreateToggle({
+   Name = "وضع توفير الطاقة المتقدم (شاشة سوداء مع عداد)",
+   CurrentValue = false,
+   Callback = function(Value)
+       if Value then
+           BlackScreenGui = Instance.new("ScreenGui", game.CoreGui)
+           local Frame = Instance.new("Frame", BlackScreenGui)
+           Frame.Size = UDim2.new(1, 0, 1, 0)
+           Frame.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+           
+           BlackScreenText = Instance.new("TextLabel", Frame)
+           BlackScreenText.Size = UDim2.new(1, 0, 1, 0)
+           BlackScreenText.Text = "حقوق: ايتاشي ~ يوتا\nوضع الـ AFK مفعل\nالوقت: 00:00:00"
+           BlackScreenText.TextColor3 = Color3.fromRGB(0, 255, 150)
+           BlackScreenText.TextSize = 22
+           BlackScreenText.Font = Enum.Font.SourceSansBold
+       else
+           if BlackScreenGui then
+               BlackScreenGui:Destroy()
+               BlackScreenGui = nil
+               BlackScreenText = nil
+           end
+       end
+   end,
+})
+
+-- ==========================================
+-- 2. قسم Anti-Kick
+-- ==========================================
+ProtectionTab:CreateSection("إعدادات Anti-Kick")
+
+ProtectionTab:CreateToggle({
+   Name = "تفعيل نظام Anti-Kick القوي",
+   CurrentValue = true,
+   Callback = function(Value)
+       AntiKickEnabled = Value
+   end,
+})
+
+ProtectionTab:CreateParagraph({
+    Title = "🛡️ حالة الحماية",
+    Content = "نظام الـ Anti-Kick يعمل حالياً في الخلفية ويمنع السكربتات المحلية وأنظمة الحماية من طردك."
+})
+
+local OldNamecall
+local OldKick
+
+OldKick = hookfunction(LocalPlayer.Kick, function(self, ...)
+    if AntiKickEnabled and self == LocalPlayer then
+        Rayfield:Notify({
+            Title = "ايتاشي ~ يوتا",
+            Content = "🛡️ تم منع محاولة كيك (Kick Direct)!",
+            Duration = 5,
+            Image = 4483362458,
+        })
+        return nil
+    end
+    return OldKick(self, ...)
+end)
+
+OldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+    local Method = getnamecallmethod()
+    if AntiKickEnabled and self == LocalPlayer and string.lower(Method) == "kick" then
+        Rayfield:Notify({
+            Title = "ايتاشي ~ يوتا",
+            Content = "🛡️ تم اعتراض وتخطي حماية Kick خفية!",
+            Duration = 5,
+            Image = 4483362458,
+        })
+        return nil
+    end
+    return OldNamecall(self, ...)
+end)
+
+game:GetService("GuiService").ErrorMessageChanged:Connect(function()
+    if AntiKickEnabled then
+        task.wait(2)
+        game:GetService("TeleportService"):Teleport(game.PlaceId, LocalPlayer)
+    end
+end)
+
+-- ==========================================
+-- 3. قسم تجسس (Spy Tab)
+-- ==========================================
+local selectedSpyPlayer = nil
+local spyConnection = nil
+
+local function getPlayerNames()
+    local playerNames = {}
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            table.insert(playerNames, player.Name)
+        end
+    end
+    return playerNames
+end
+
+local function spectatePlayer(enable)
+    local camera = workspace.CurrentCamera
+    if selectedSpyPlayer then
+        local targetPlayer = Players:FindFirstChild(selectedSpyPlayer)
+        if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
+            if enable then
+                camera.CameraSubject = targetPlayer.Character.Humanoid
+            else
+                if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+                    camera.CameraSubject = LocalPlayer.Character.Humanoid
+                end
+            end
+        end
+    end
+end
+
+local function floatAbovePlayerHead()
+    local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    if character and character:FindFirstChild("HumanoidRootPart") then
+        local humanoidRootPart = character.HumanoidRootPart
+        if selectedSpyPlayer then
+            local targetPlayer = Players:FindFirstChild(selectedSpyPlayer)
+            if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Head") then
+                local targetHead = targetPlayer.Character.Head
+                humanoidRootPart.CFrame = targetHead.CFrame * CFrame.new(0, 3, 0)
+
+                if spyConnection then spyConnection:Disconnect() end
+                spyConnection = RunService.Heartbeat:Connect(function()
+                    if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Head") then
+                        humanoidRootPart.CFrame = targetPlayer.Character.Head.CFrame * CFrame.new(0, 3, 0)
+                    else
+                        if spyConnection then spyConnection:Disconnect() end
+                    end
+                end)
+            end
+        end
+    end
+end
+
+SpyTab:CreateDropdown({
+   Name = "اختار اللاعب",
+   Options = getPlayerNames(),
+   CurrentOption = "",
+   MultipleOptions = false,
+   Flag = "SpyPlayerDropdown",
+   Callback = function(Option)
+       selectedSpyPlayer = typeof(Option) == "table" and Option[1] or Option
+   end,
+})
+
+SpyTab:CreateToggle({
+   Name = "شاهد اللاعب",
+   CurrentValue = false,
+   Callback = function(Value)
+       spectatePlayer(Value)
+   end,
+})
+
+SpyTab:CreateButton({
+   Name = "الانتقال الى اللاعب",
+   Callback = function()
+       floatAbovePlayerHead()
+   end,
+})
+
+-- ==========================================
+-- 4. قسم بانق (Bang Tab)
+-- ==========================================
+local function createBangToggle(name, yOffset, faceBang)
+    local bangActive = false
+    local bangConnection = nil
+    local togglePosition = false
+
+    BangTab:CreateToggle({
+        Name = name,
+        CurrentValue = false,
+        Callback = function(Value)
+            bangActive = Value
+            local char = LocalPlayer.Character
+            if not char then return end
+
+            local humanoid = char:FindFirstChildOfClass("Humanoid")
+            if not humanoid then return end
+
+            if Value then
+                humanoid.PlatformStand = true
+                if bangConnection then bangConnection:Disconnect() end
+
+                bangConnection = RunService.Heartbeat:Connect(function()
+                    if bangActive and getgenv().selectedPlayer then
+                        local targetPlayer = Players:FindFirstChild(getgenv().selectedPlayer)
+                        if targetPlayer and targetPlayer.Character and targetPlayer.Character.PrimaryPart then
+                            local targetHead = targetPlayer.Character:FindFirstChild("Head")
+                            if targetHead and char.PrimaryPart then
+                                local offset = togglePosition and 1 or 4
+                                if faceBang then
+                                    char:SetPrimaryPartCFrame(targetHead.CFrame * CFrame.new(0, 1, -offset) * CFrame.Angles(0, math.rad(180), 0))
+                                else
+                                    char:SetPrimaryPartCFrame(targetHead.CFrame * CFrame.new(0, yOffset, offset) * CFrame.Angles(0, 0, 0))
+                                end
+                                togglePosition = not togglePosition
+                                task.wait(0.1)
+                            end
+                        end
+                    end
+                end)
+            else
+                humanoid.PlatformStand = false
+                if bangConnection then
+                    bangConnection:Disconnect()
+                    bangConnection = nil
+                end
+            end
+        end    
+    })
+end
+
+BangTab:CreateDropdown({
+   Name = "اختار اللاعب",
+   Options = getPlayerNames(),
+   CurrentOption = "...",
+   MultipleOptions = false,
+   Flag = "BangPlayerDropdown",
+   Callback = function(Option)
+       local selected = typeof(Option) == "table" and Option[1] or Option
+       if selected ~= "" then
+           getgenv().selectedPlayer = selected
+       end
+   end,
+})
+
+createBangToggle("بانق 1", -1, false)
+createBangToggle("بانق 2", -1.5, false)
+createBangToggle("بانق الوجه 1", 1, true)
+createBangToggle("بانق الوجه 2", 1, true)
+
+-- ==========================================
+-- 5. قسم مضادات (Anti Tab)
+-- ==========================================
+
+-- 1. الحماية من الجلوس
+AntiTab:CreateSection("الحماية من الجلوس")
+
+local seatConn1
+AntiTab:CreateToggle({
+    Name = "حماية جلوس",
+    CurrentValue = false,
+    Callback = function(State)
+        if State then
+            for _, seat in ipairs(workspace:GetDescendants()) do
+                if seat:IsA("Seat") then
+                    seat.Disabled = true
+                end
+            end
+            seatConn1 = workspace.DescendantAdded:Connect(function(seat)
+                if seat:IsA("Seat") then
+                    seat.Disabled = true
+                end
+            end)
+        else
+            if seatConn1 then seatConn1:Disconnect() end
+            for _, seat in ipairs(workspace:GetDescendants()) do
+                if seat:IsA("Seat") then
+                    seat.Disabled = false
+                end
+            end
+        end
+    end,
+})
+
+-- 2. الحماية من الفلنق
+AntiTab:CreateSection("الحماية من الفلنق")
+
+AntiTab:CreateToggle({
+    Name = "حماية فلنق",
+    CurrentValue = false,
+    Callback = function(State)
+        -- تم إزالة رابط السكربت الخارجي
+    end,
+})
+
+-- 3. الكنبة
+AntiTab:CreateSection("الكنبة")
+
+AntiTab:CreateButton({
+    Name = "اضغط لاخذ الكنبة",
+    Callback = function()
+        local args = {[1] = "PickingTools", [2] = "Couch"}
+        game:GetService("ReplicatedStorage").RE:FindFirstChild("1Too1l"):InvokeServer(unpack(args))
+    end
+})
+
+-- 4. سكربت الكنبة
+AntiTab:CreateSection("سكربت يطير اي شخص تشيله بالكنبة")
+
+AntiTab:CreateButton({
+    Name = "سكربت قتل بالكنبة",
+    Callback = function()
+        -- تم إزالة رابط السكربت الخارجي
+    end
+})
+
+-- 5. سكربت التفاعل
+AntiTab:CreateSection("سكربت تحط اول 3 احرف من الي مفعل عليك ويموت")
+
+AntiTab:CreateButton({
+    Name = "سكربت يقتل الي يفعلون عليك",
+    Callback = function()
+        -- تم إزالة رابط السكربت الخارجي
+    end
+})
+
+-- 6. سكربت الرحمة
+AntiTab:CreateSection("سكربت يطير الي يسويلك بانغ او رحمة")
+
+AntiTab:CreateButton({
+    Name = "سكربت يطير الي يفعلون عليك الرحمة",
+    Callback = function()
+        -- تم إزالة رابط السكربت الخارجي
+    end
+})
+
+-- ==========================================
+-- 6. أدوات السيرفر
+-- ==========================================
+ToolsTab:CreateSection("تنظيف وتخفيف الذاكرة")
+
+ToolsTab:CreateButton({
+   Name = "تخفيف الجرافيكس وتنظيف الذاكرة",
+   Callback = function()
+       collectgarbage("collect")
+       for _, v in pairs(game:GetDescendants()) do
+           if v:IsA("BasePart") then
+               v.Material = Enum.Material.SmoothPlastic
+           elseif v:IsA("Texture") or v:IsA("Decal") then
+               v:Destroy()
+           end
+       end
+   end,
+})
+
+ToolsTab:CreateSection("التحكم بالسيرفرات")
+
+ToolsTab:CreateButton({
+   Name = "إعادة الاتصال بالسيرفر (Rejoin)",
+   Callback = function()
+       game:GetService("TeleportService"):Teleport(game.PlaceId, LocalPlayer)
+   end,
+})
+
+ToolsTab:CreateButton({
+   Name = "انتقال لسيرفر آخر (Server Hop)",
+   Callback = function()
+       -- تم إزالة جلب السيرفرات عبر روابط HTTP
+   end,
+})
+
+-- ==========================================
+-- المهام الخلفية
+-- ==========================================
+task.spawn(function()
+    while task.wait(300) do
+        collectgarbage("collect")
+    end
+end)
+
+task.spawn(function()
+    while task.wait(1) do
+        local Elapsed = math.floor(tick() - StartTime)
+        local Hours = math.floor(Elapsed / 3600)
+        local Minutes = math.floor((Elapsed % 3600) / 60)
+        local Seconds = Elapsed % 60
+        
+        local TimeFormatted = string.format("%02d:%02d:%02d", Hours, Minutes, Seconds)
+        
+        TimerParagraph:Set({
+            Title = "⏱️ وقت التواجد في اللعبة",
+            Content = TimeFormatted
+        })
+        
+        if BlackScreenText then
+            BlackScreenText.Text = "حقوق: ايتاشي ~ يوتا\nوضع الـ AFK مفعل\nمدة التواجد: " .. TimeFormatted
+        end
+    end
+end)
